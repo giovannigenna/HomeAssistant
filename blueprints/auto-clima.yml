@@ -1,6 +1,6 @@
 blueprint:
-  name: Condizionatore Smart Energetico
-  description: Gestione intelligente clima con soglie personalizzate.
+  name: Clima Intelligente con Happy Hour
+  description: Accende il condizionatore per caldo o freddo in base a soglie personalizzate e fascia oraria economica.
   domain: automation
   input:
     condizionatore:
@@ -24,7 +24,7 @@ blueprint:
         entity:
           domain: sensor
     persona:
-      name: Persona presente
+      name: Persona da monitorare
       selector:
         entity:
           domain: person
@@ -63,40 +63,50 @@ trigger:
   - platform: state
     entity_id: !input persona
 
+variables:
+  current_temp: "{{ states(temperature) | float(0) }}"
+  current_humidity: "{{ states(umidita) | float(0) }}"
+  current_consumo: "{{ states(consumo) | float(0) }}"
+  soglia_freddo_v: !input soglia_freddo
+  soglia_umidita_v: !input soglia_umidita
+  soglia_caldo_v: !input soglia_caldo
+  soglia_consumo_v: !input soglia_consumo
+  target_freddo_v: !input target_freddo
+  target_caldo_v: !input target_caldo
+  condizionatore_id: !input condizionatore
+
 condition:
   - condition: state
     entity_id: !input persona
     state: "home"
   - condition: template
-    value_template: >
-      {{ states(!input 'consumo') | float < (input('soglia_consumo') | float) }}
+    value_template: "{{ current_consumo < soglia_consumo_v }}"
 
 action:
   - choose:
       - conditions:
           - condition: template
             value_template: >
-              {{ states(!input 'temperatura') | float > (input('soglia_freddo') | float)
-                 and states(!input 'umidita') | float > (input('soglia_umidita') | float) }}
+              {{ current_temp > soglia_freddo_v and current_humidity > soglia_umidita_v }}
         sequence:
           - service: climate.set_temperature
-            target:
-              entity_id: !input condizionatore
             data:
-              temperature: !input target_freddo
+              temperature: "{{ target_freddo_v }}"
               hvac_mode: cool
+            target:
+              entity_id: "{{ condizionatore_id }}"
       - conditions:
           - condition: template
             value_template: >
-              {{ states(!input 'temperatura') | float < (input('soglia_caldo') | float) }}
+              {{ current_temp < soglia_caldo_v }}
         sequence:
           - service: climate.set_temperature
-            target:
-              entity_id: !input condizionatore
             data:
-              temperature: !input target_caldo
+              temperature: "{{ target_caldo_v }}"
               hvac_mode: heat
+            target:
+              entity_id: "{{ condizionatore_id }}"
     default:
       - service: climate.turn_off
         target:
-          entity_id: !input condizionatore
+          entity_id: "{{ condizionatore_id }}"
