@@ -1,6 +1,6 @@
 blueprint:
   name: Condizionatore Smart Energetico
-  description: Gestione condizionatore con happy hour, soglie e spegnimento.
+  description: Gestione intelligente clima con soglie personalizzate.
   domain: automation
   input:
     condizionatore:
@@ -28,89 +28,56 @@ blueprint:
       selector:
         entity:
           domain: person
-    happy_hour_inizio:
-      name: Inizio Happy Hour
-      default: "19:00:00"
-      selector:
-        time: {}
-    happy_hour_fine:
-      name: Fine Happy Hour
-      default: "22:00:00"
-      selector:
-        time: {}
     soglia_caldo:
-      name: Soglia temperatura per riscaldamento
       default: 21
       selector:
-        number:
-          min: 10
-          max: 30
-          step: 0.5
+        number: {min: 10, max: 30, step: 0.5}
     soglia_freddo:
-      name: Soglia temperatura per raffrescamento
       default: 26
       selector:
-        number:
-          min: 20
-          max: 35
-          step: 0.5
+        number: {min: 20, max: 35, step: 0.5}
     soglia_umidita:
-      name: Soglia umidità per raffrescamento
       default: 60
       selector:
-        number:
-          min: 0
-          max: 100
+        number: {min: 0, max: 100}
     soglia_consumo:
-      name: Soglia consumo massimo
       default: 2500
       selector:
-        number:
-          min: 0
-          max: 10000
+        number: {min: 0, max: 10000}
     target_caldo:
-      name: Temperatura target riscaldamento
       default: 21
       selector:
-        number:
-          min: 10
-          max: 30
+        number: {min: 10, max: 30}
     target_freddo:
-      name: Temperatura target raffrescamento
       default: 23
       selector:
-        number:
-          min: 15
-          max: 30
+        number: {min: 15, max: 30}
 
 trigger:
+  - platform: time_pattern
+    minutes: "/5"
   - platform: state
     entity_id: !input temperatura
   - platform: state
     entity_id: !input umidita
   - platform: state
     entity_id: !input persona
-  - platform: time_pattern
-    minutes: "/10"
 
 condition:
   - condition: state
     entity_id: !input persona
     state: "home"
-  - condition: numeric_state
-    entity_id: !input consumo
-    below: !input soglia_consumo
+  - condition: template
+    value_template: >
+      {{ states(!input 'consumo') | float < (input('soglia_consumo') | float) }}
 
 action:
   - choose:
-      # Raffrescamento (anche in Happy Hour)
       - conditions:
-          - condition: numeric_state
-            entity_id: !input temperatura
-            above: !input soglia_freddo
-          - condition: numeric_state
-            entity_id: !input umidita
-            above: !input soglia_umidita
+          - condition: template
+            value_template: >
+              {{ states(!input 'temperatura') | float > (input('soglia_freddo') | float)
+                 and states(!input 'umidita') | float > (input('soglia_umidita') | float) }}
         sequence:
           - service: climate.set_temperature
             target:
@@ -118,11 +85,10 @@ action:
             data:
               temperature: !input target_freddo
               hvac_mode: cool
-      # Riscaldamento (solo se sotto soglia)
       - conditions:
-          - condition: numeric_state
-            entity_id: !input temperatura
-            below: !input soglia_caldo
+          - condition: template
+            value_template: >
+              {{ states(!input 'temperatura') | float < (input('soglia_caldo') | float) }}
         sequence:
           - service: climate.set_temperature
             target:
