@@ -1,237 +1,134 @@
 blueprint:
-  name: Condizionatore Smart Energetico Completo
-  description: >
-    Automazione per gestione intelligente del condizionatore con riscaldamento e raffrescamento
-    durante Happy Hour e controllo automatico fuori orario, con limiti di consumo e presenza.
+  name: Condizionatore Smart Energetico
+  description: Gestione condizionatore con happy hour, soglie e spegnimento.
   domain: automation
   input:
     condizionatore:
-      name: Climate condizionatore
-      description: Dispositivo climate da controllare
+      name: Climatizzatore
       selector:
         entity:
           domain: climate
-    temperatura_soggiorno:
-      name: Sensore temperatura ambiente
-      description: Sensore temperatura interna
+    temperatura:
+      name: Sensore temperatura
       selector:
         entity:
           domain: sensor
-    umidita_soggiorno:
-      name: Sensore umidità ambiente
-      description: Sensore umidità interna
+    umidita:
+      name: Sensore umidità
       selector:
         entity:
           domain: sensor
-    consumo_corrente:
-      name: Sensore consumo totale energia
-      description: Sensore per consumo corrente in Watt
+    consumo:
+      name: Sensore consumo
       selector:
         entity:
           domain: sensor
-    persona_presente:
-      name: Persona da controllare presenza
-      description: Entità person per presenza casa
+    persona:
+      name: Persona presente
       selector:
         entity:
           domain: person
     happy_hour_inizio:
-      name: Ora inizio Happy Hour
-      description: Orario di inizio fascia oraria a costo energetico zero
+      name: Inizio Happy Hour
       default: "19:00:00"
       selector:
         time: {}
     happy_hour_fine:
-      name: Ora fine Happy Hour
-      description: Orario fine fascia Happy Hour
+      name: Fine Happy Hour
       default: "22:00:00"
       selector:
         time: {}
-    soglia_consumo_massimo:
-      name: Soglia consumo massimo (Watt)
-      description: Soglia massima consumo per attivare condizionatore
-      default: 2500
-      selector:
-        number:
-          min: 0
-          max: 10000
-          unit_of_measurement: W
-          step: 50
-    soglia_temp_caldo:
-      name: Temperatura massima per accendere riscaldamento (°C)
-      description: Temperatura sotto cui si attiva riscaldamento
+    soglia_caldo:
+      name: Soglia temperatura per riscaldamento
       default: 21
       selector:
         number:
-          min: 5
+          min: 10
           max: 30
-          unit_of_measurement: °C
           step: 0.5
-    soglia_temp_freddo:
-      name: Temperatura minima per accendere raffrescamento (°C)
-      description: Temperatura sopra cui si attiva raffrescamento
+    soglia_freddo:
+      name: Soglia temperatura per raffrescamento
       default: 26
       selector:
         number:
           min: 20
-          max: 40
-          unit_of_measurement: °C
+          max: 35
           step: 0.5
-    soglia_umidita_freddo:
-      name: Umidità minima per attivare raffrescamento (%)
-      description: Umidità sopra cui si attiva raffrescamento
+    soglia_umidita:
+      name: Soglia umidità per raffrescamento
       default: 60
       selector:
         number:
           min: 0
           max: 100
-          unit_of_measurement: "%"
-          step: 1
-    temp_target_caldo:
-      name: Temperatura target riscaldamento (°C)
-      description: Temperatura da impostare quando si scalda
+    soglia_consumo:
+      name: Soglia consumo massimo
+      default: 2500
+      selector:
+        number:
+          min: 0
+          max: 10000
+    target_caldo:
+      name: Temperatura target riscaldamento
       default: 21
       selector:
         number:
-          min: 5
+          min: 10
           max: 30
-          unit_of_measurement: °C
-          step: 0.5
-    temp_target_freddo:
-      name: Temperatura target raffrescamento (°C)
-      description: Temperatura da impostare quando si raffresca
+    target_freddo:
+      name: Temperatura target raffrescamento
       default: 23
       selector:
         number:
           min: 15
           max: 30
-          unit_of_measurement: °C
-          step: 0.5
 
 trigger:
-  - platform: time
-    at:
-      - !input happy_hour_inizio
-      - !input happy_hour_fine
   - platform: state
-    entity_id: !input persona_presente
-    to: "home"
-  - platform: numeric_state
-    entity_id: !input consumo_corrente
-    below: !input soglia_consumo_massimo
-    for: "00:05:00"
-  - platform: numeric_state
-    entity_id: !input consumo_corrente
-    above: !input soglia_consumo_massimo
-    for: "00:01:00"
-  - platform: numeric_state
-    entity_id: !input temperatura_soggiorno
-  - platform: numeric_state
-    entity_id: !input umidita_soggiorno
+    entity_id: !input temperatura
+  - platform: state
+    entity_id: !input umidita
+  - platform: state
+    entity_id: !input persona
+  - platform: time_pattern
+    minutes: "/10"
 
 condition:
   - condition: state
-    entity_id: !input persona_presente
+    entity_id: !input persona
     state: "home"
   - condition: numeric_state
-    entity_id: !input consumo_corrente
-    below: !input soglia_consumo_massimo
+    entity_id: !input consumo
+    below: !input soglia_consumo
 
 action:
   - choose:
-      # Happy Hour caldo: accendi riscaldamento se sotto soglia temperatura caldo
+      # Raffrescamento (anche in Happy Hour)
       - conditions:
-          - condition: time
-            after: !input happy_hour_inizio
-            before: !input happy_hour_fine
           - condition: numeric_state
-            entity_id: !input temperatura_soggiorno
-            below: !input soglia_temp_caldo
-          - condition: state
-            entity_id: !input condizionatore
-            state: "off"
+            entity_id: !input temperatura
+            above: !input soglia_freddo
+          - condition: numeric_state
+            entity_id: !input umidita
+            above: !input soglia_umidita
         sequence:
-          - service: climate.turn_on
-            target:
-              entity_id: !input condizionatore
           - service: climate.set_temperature
             target:
               entity_id: !input condizionatore
             data:
-              temperature: !input temp_target_caldo
-              hvac_mode: heat
-      # Happy Hour freddo: accendi raffrescamento se sopra soglia temperatura e umidità
-      - conditions:
-          - condition: time
-            after: !input happy_hour_inizio
-            before: !input happy_hour_fine
-          - condition: numeric_state
-            entity_id: !input temperatura_soggiorno
-            above: !input soglia_temp_freddo
-          - condition: numeric_state
-            entity_id: !input umidita_soggiorno
-            above: !input soglia_umidita_freddo
-          - condition: state
-            entity_id: !input condizionatore
-            state: "off"
-        sequence:
-          - service: climate.turn_on
-            target:
-              entity_id: !input condizionatore
-          - service: climate.set_temperature
-            target:
-              entity_id: !input condizionatore
-            data:
-              temperature: !input temp_target_freddo
+              temperature: !input target_freddo
               hvac_mode: cool
-      # Fuori Happy Hour: accendi raffrescamento se sopra soglia temperatura e umidità
+      # Riscaldamento (solo se sotto soglia)
       - conditions:
-          - condition: not
-            conditions:
-              - condition: time
-                after: !input happy_hour_inizio
-                before: !input happy_hour_fine
           - condition: numeric_state
-            entity_id: !input temperatura_soggiorno
-            above: !input soglia_temp_freddo
-          - condition: numeric_state
-            entity_id: !input umidita_soggiorno
-            above: !input soglia_umidita_freddo
-          - condition: state
-            entity_id: !input condizionatore
-            state: "off"
+            entity_id: !input temperatura
+            below: !input soglia_caldo
         sequence:
-          - service: climate.turn_on
-            target:
-              entity_id: !input condizionatore
           - service: climate.set_temperature
             target:
               entity_id: !input condizionatore
             data:
-              temperature: !input temp_target_freddo
-              hvac_mode: cool
-      # Fuori Happy Hour: accendi riscaldamento se sotto soglia temperatura caldo
-      - conditions:
-          - condition: not
-            conditions:
-              - condition: time
-                after: !input happy_hour_inizio
-                before: !input happy_hour_fine
-          - condition: numeric_state
-            entity_id: !input temperatura_soggiorno
-            below: !input soglia_temp_caldo
-          - condition: state
-            entity_id: !input condizionatore
-            state: "off"
-        sequence:
-          - service: climate.turn_on
-            target:
-              entity_id: !input condizionatore
-          - service: climate.set_temperature
-            target:
-              entity_id: !input condizionatore
-            data:
-              temperature: !input temp_target_caldo
+              temperature: !input target_caldo
               hvac_mode: heat
     default:
       - service: climate.turn_off
