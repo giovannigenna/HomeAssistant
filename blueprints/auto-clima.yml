@@ -1,112 +1,144 @@
 blueprint:
-  name: Clima Intelligente con Happy Hour
-  description: Accende il condizionatore per caldo o freddo in base a soglie personalizzate e fascia oraria economica.
+  name: Climatizzazione Smart
+  description: |
+    Accende o spegne un climatizzatore automaticamente in base a orario, temperatura, umidità,
+    consumo elettrico e presenza in casa.
   domain: automation
   input:
-    condizionatore:
+    climate_entity:
       name: Climatizzatore
       selector:
         entity:
           domain: climate
-    temperatura:
-      name: Sensore temperatura
+    temp_sensor:
+      name: Sensore Temperatura
       selector:
         entity:
           domain: sensor
-    umidita:
-      name: Sensore umidità
+    humidity_sensor:
+      name: Sensore Umidità
       selector:
         entity:
           domain: sensor
-    consumo:
-      name: Sensore consumo
+    power_sensor:
+      name: Sensore Consumo
       selector:
         entity:
           domain: sensor
-    persona:
-      name: Persona da monitorare
+    person_entity:
+      name: Persona
       selector:
         entity:
           domain: person
-    soglia_caldo:
-      default: 21
-      selector:
-        number: {min: 10, max: 30, step: 0.5}
-    soglia_freddo:
-      default: 26
-      selector:
-        number: {min: 20, max: 35, step: 0.5}
-    soglia_umidita:
-      default: 60
-      selector:
-        number: {min: 0, max: 100}
-    soglia_consumo:
+    power_threshold:
+      name: Soglia Massima di Consumo
       default: 2500
       selector:
-        number: {min: 0, max: 10000}
-    target_caldo:
+        number:
+          min: 100
+          max: 5000
+          step: 100
+    min_temp:
+      name: Temperatura Minima per Caldo
       default: 21
       selector:
-        number: {min: 10, max: 30}
-    target_freddo:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+    max_temp:
+      name: Temperatura Massima per Freddo
+      default: 26
+      selector:
+        number:
+          min: 20
+          max: 35
+          step: 0.5
+    max_humidity:
+      name: Umidità Massima
+      default: 60
+      selector:
+        number:
+          min: 20
+          max: 100
+          step: 1
+    target_temp_heat:
+      name: Temperatura Target (Caldo)
+      default: 21
+      selector:
+        number:
+          min: 18
+          max: 24
+          step: 0.5
+    target_temp_cool:
+      name: Temperatura Target (Freddo)
       default: 23
       selector:
-        number: {min: 15, max: 30}
+        number:
+          min: 20
+          max: 26
+          step: 0.5
+    happy_hour_start:
+      name: Inizio Happy Hour
+      default: "19:00:00"
+      selector:
+        time: {}
+    happy_hour_end:
+      name: Fine Happy Hour
+      default: "22:00:00"
+      selector:
+        time: {}
 
 trigger:
-  - platform: time_pattern
-    minutes: "/5"
   - platform: state
-    entity_id: !input temperatura
-  - platform: state
-    entity_id: !input umidita
-  - platform: state
-    entity_id: !input persona
-
-variables:
-  current_temp: "{{ states(temperature) | float(0) }}"
-  current_humidity: "{{ states(umidita) | float(0) }}"
-  current_consumo: "{{ states(consumo) | float(0) }}"
-  soglia_freddo_v: !input soglia_freddo
-  soglia_umidita_v: !input soglia_umidita
-  soglia_caldo_v: !input soglia_caldo
-  soglia_consumo_v: !input soglia_consumo
-  target_freddo_v: !input target_freddo
-  target_caldo_v: !input target_caldo
-  condizionatore_id: !input condizionatore
+    entity_id: !input person_entity
+  - platform: numeric_state
+    entity_id: !input temp_sensor
+  - platform: numeric_state
+    entity_id: !input humidity_sensor
+  - platform: numeric_state
+    entity_id: !input power_sensor
+  - platform: time
+    at: !input happy_hour_start
+  - platform: time
+    at: !input happy_hour_end
 
 condition:
   - condition: state
-    entity_id: !input persona
+    entity_id: !input person_entity
     state: "home"
-  - condition: template
-    value_template: "{{ current_consumo < soglia_consumo_v }}"
+  - condition: numeric_state
+    entity_id: !input power_sensor
+    below: !input power_threshold
 
 action:
   - choose:
       - conditions:
-          - condition: template
-            value_template: >
-              {{ current_temp > soglia_freddo_v and current_humidity > soglia_umidita_v }}
+          - condition: time
+            after: !input happy_hour_start
+            before: !input happy_hour_end
         sequence:
           - service: climate.set_temperature
-            data:
-              temperature: "{{ target_freddo_v }}"
-              hvac_mode: cool
             target:
-              entity_id: "{{ condizionatore_id }}"
+              entity_id: !input climate_entity
+            data:
+              temperature: !input target_temp_heat
+              hvac_mode: "heat"
       - conditions:
-          - condition: template
-            value_template: >
-              {{ current_temp < soglia_caldo_v }}
+          - condition: numeric_state
+            entity_id: !input temp_sensor
+            above: !input max_temp
+          - condition: numeric_state
+            entity_id: !input humidity_sensor
+            above: !input max_humidity
         sequence:
           - service: climate.set_temperature
-            data:
-              temperature: "{{ target_caldo_v }}"
-              hvac_mode: heat
             target:
-              entity_id: "{{ condizionatore_id }}"
+              entity_id: !input climate_entity
+            data:
+              temperature: !input target_temp_cool
+              hvac_mode: "cool"
     default:
       - service: climate.turn_off
         target:
-          entity_id: "{{ condizionatore_id }}"
+          entity_id: !input climate_entity
